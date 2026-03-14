@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AI 前沿新闻推送智能体
-每天自动抓取 AI 领域最新新闻，整理成日报发送到指定邮箱
+每日前沿资讯推送智能体
+每天自动抓取 AI、新能源、财经领域最新新闻，整理成日报发送到指定邮箱
 """
 
 import os
@@ -35,25 +35,78 @@ HOURS_LIMIT = 24
 
 # RSS 源配置
 RSS_SOURCES = {
+    # AI 科技类
     "leiphone": {
         "name": "雷锋网",
-        "url": "https://www.leiphone.com/feed"
+        "url": "https://www.leiphone.com/feed",
+        "category": "ai_tech"
     },
     "36kr_ai": {
         "name": "36氪",
-        "url": "https://36kr.com/feed"
+        "url": "https://36kr.com/feed",
+        "category": "ai_tech"
     },
     "solidot": {
         "name": "Solidot",
-        "url": "https://www.solidot.org/index.rss"
+        "url": "https://www.solidot.org/index.rss",
+        "category": "ai_tech"
     },
     "ifanr": {
         "name": "爱范儿",
-        "url": "https://www.ifanr.com/feed"
+        "url": "https://www.ifanr.com/feed",
+        "category": "ai_tech"
     },
     "sspai": {
         "name": "少数派",
-        "url": "https://sspai.com/feed"
+        "url": "https://sspai.com/feed",
+        "category": "ai_tech"
+    },
+    # 新能源产业链
+    "gg_lb": {
+        "name": "高工锂电",
+        "url": "https://www.gg-lb.com/feed",
+        "category": "new_energy"
+    },
+    "d1ev": {
+        "name": "第一电动网",
+        "url": "https://www.d1ev.com/rss",
+        "category": "new_energy"
+    },
+    "bjx_chuneng": {
+        "name": "北极星储能网",
+        "url": "https://chuneng.bjx.com.cn/rss.xml",
+        "category": "new_energy"
+    },
+    "solarbe": {
+        "name": "索比光伏网",
+        "url": "https://news.solarbe.com/rss",
+        "category": "new_energy"
+    },
+    "trendforce_newenergy": {
+        "name": "集邦新能源网",
+        "url": "https://newenergy.trendforce.cn/rss",
+        "category": "new_energy"
+    },
+    # 财经热点
+    "caixin": {
+        "name": "财新网",
+        "url": "https://www.caixin.com/rss.xml",
+        "category": "finance"
+    },
+    "wallstreetcn": {
+        "name": "华尔街见闻",
+        "url": "https://wallstreetcn.com/rss.xml",
+        "category": "finance"
+    },
+    "huxiu": {
+        "name": "虎嗅网",
+        "url": "https://www.huxiu.com/rss",
+        "category": "finance"
+    },
+    "jiemian": {
+        "name": "界面新闻",
+        "url": "https://www.jiemian.com/rss.xml",
+        "category": "finance"
     }
 }
 
@@ -108,18 +161,21 @@ def parse_datetime(date_string):
     return None
 
 
-def fetch_chinese_tech_media():
-    """抓取中文科技媒体 RSS"""
-    news_list = []
-    chinese_sources = ['leiphone', '36kr_ai', 'solidot', 'ifanr', 'sspai']
+def fetch_rss_by_category(category=None):
+    """抓取指定分类的 RSS 源
     
-    for source_key in chinese_sources:
-        if source_key not in RSS_SOURCES:
+    Args:
+        category: 分类名称，None 表示抓取所有
+    """
+    news_list = []
+    
+    for source_key, source_config in RSS_SOURCES.items():
+        # 如果指定了分类，只抓取该分类的源
+        if category and source_config.get('category') != category:
             continue
             
-        source_config = RSS_SOURCES[source_key]
         try:
-            logger.info(f"正在抓取: {source_config['name']}")
+            logger.info(f"正在抓取: {source_config['name']} [{source_config.get('category', 'unknown')}]")
             
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -148,6 +204,7 @@ def fetch_chinese_tech_media():
                         "published": published,
                         "pub_date": pub_date,
                         "source": source_config['name'],
+                        "category": source_config.get('category', 'other'),
                         "summary": summary
                     }
                     news_list.append(news_item)
@@ -163,11 +220,26 @@ def fetch_chinese_tech_media():
     return news_list
 
 
+def fetch_chinese_tech_media():
+    """抓取中文科技媒体 RSS (兼容旧版本)"""
+    return fetch_rss_by_category('ai_tech')
+
+
 def fetch_all_news():
     """从所有源抓取新闻"""
-    all_news = []
-    all_news.extend(fetch_chinese_tech_media())
+    all_news = fetch_rss_by_category()  # 抓取所有分类
+    
+    # 统计各分类数量
+    category_count = {}
+    for news in all_news:
+        cat = news.get('category', 'other')
+        category_count[cat] = category_count.get(cat, 0) + 1
+    
     logger.info(f"共抓取到 {len(all_news)} 条原始新闻")
+    for cat, count in category_count.items():
+        cat_name = {'ai_tech': 'AI科技', 'new_energy': '新能源', 'finance': '财经'}.get(cat, cat)
+        logger.info(f"  - {cat_name}: {count} 条")
+    
     return all_news
 
 
@@ -237,53 +309,86 @@ def sort_and_limit(news_list, limit=MAX_NEWS_COUNT):
 
 
 def build_html_email(news_list, date_str):
-    """构建 HTML 格式的邮件内容"""
+    """构建 HTML 格式的邮件内容，按分类展示"""
     if not news_list:
-        return "<p>今日暂无新的 AI 新闻</p>"
+        return "<p>今日暂无新的新闻</p>"
+    
+    # 按分类分组
+    categories = {
+        'ai_tech': {'name': '🤖 AI 科技', 'color': '#667eea', 'news': []},
+        'new_energy': {'name': '⚡ 新能源产业', 'color': '#22c55e', 'news': []},
+        'finance': {'name': '💰 财经热点', 'color': '#f59e0b', 'news': []},
+        'other': {'name': '📰 其他', 'color': '#6b7280', 'news': []}
+    }
+    
+    for news in news_list:
+        cat = news.get('category', 'other')
+        if cat in categories:
+            categories[cat]['news'].append(news)
     
     html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>AI 前沿日报</title>
+        <title>每日前沿资讯日报</title>
     </head>
     <body style="margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
         <div style="max-width: 680px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 32px 24px; text-align: center;">
-                <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">🤖 AI 前沿日报</h1>
+                <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">📰 每日前沿资讯</h1>
                 <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">{date_str} | 精选 {len(news_list)} 条</p>
+                <p style="margin: 4px 0 0 0; color: rgba(255,255,255,0.7); font-size: 12px;">AI科技 · 新能源 · 财经</p>
             </div>
             <div style="padding: 24px;">
     """
     
-    for idx, news in enumerate(news_list, 1):
-        title = news.get('title', '无标题')
-        link = news.get('link', '#')
-        source = news.get('source', '未知来源')
-        summary = news.get('summary', '')
-        
-        pub_date = news.get('pub_date')
-        time_str = pub_date.strftime("%m月%d日 %H:%M") if pub_date else "未知时间"
-        
+    # 按分类渲染新闻
+    global_idx = 1
+    for cat_key, cat_data in categories.items():
+        if not cat_data['news']:
+            continue
+            
+        # 分类标题
         html_content += f"""
-                <div style="background-color: #fafbfc; border-radius: 8px; padding: 20px; margin-bottom: 16px; border-left: 4px solid #667eea;">
-                    <div style="display: flex; align-items: flex-start; gap: 12px;">
-                        <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex-shrink: 0;">{idx}</span>
-                        <div style="flex: 1; min-width: 0;">
-                            <a href="{link}" style="color: #1a1a1a; text-decoration: none; font-size: 16px; font-weight: 600; line-height: 1.5; display: block; margin-bottom: 8px;">
-                                {title}
-                            </a>
-                            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                                <span style="color: #667eea; font-size: 12px; font-weight: 500;">{source}</span>
-                                <span style="color: #999; font-size: 12px;">•</span>
-                                <span style="color: #999; font-size: 12px;">{time_str}</span>
+                <div style="margin-bottom: 32px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid {cat_data['color']};">
+                        <span style="font-size: 18px; font-weight: 600; color: {cat_data['color']};">{cat_data['name']}</span>
+                        <span style="background-color: {cat_data['color']}20; color: {cat_data['color']}; font-size: 12px; padding: 2px 8px; border-radius: 12px;">{len(cat_data['news'])} 条</span>
+                    </div>
+        """
+        
+        # 该分类下的新闻
+        for news in cat_data['news']:
+            title = news.get('title', '无标题')
+            link = news.get('link', '#')
+            source = news.get('source', '未知来源')
+            summary = news.get('summary', '')
+            
+            pub_date = news.get('pub_date')
+            time_str = pub_date.strftime("%m月%d日 %H:%M") if pub_date else "未知时间"
+            
+            html_content += f"""
+                    <div style="background-color: #fafbfc; border-radius: 8px; padding: 16px; margin-bottom: 12px; border-left: 4px solid {cat_data['color']};">
+                        <div style="display: flex; align-items: flex-start; gap: 12px;">
+                            <span style="background: {cat_data['color']}; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0;">{global_idx}</span>
+                            <div style="flex: 1; min-width: 0;">
+                                <a href="{link}" style="color: #1a1a1a; text-decoration: none; font-size: 15px; font-weight: 600; line-height: 1.5; display: block; margin-bottom: 6px;">
+                                    {title}
+                                </a>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <span style="color: {cat_data['color']}; font-size: 12px; font-weight: 500;">{source}</span>
+                                    <span style="color: #999; font-size: 12px;">•</span>
+                                    <span style="color: #999; font-size: 12px;">{time_str}</span>
+                                </div>
+                                {f'<p style="margin: 8px 0 0 0; color: #666; font-size: 13px; line-height: 1.6;">{summary}</p>' if summary else ''}
                             </div>
-                            {f'<p style="margin: 10px 0 0 0; color: #666; font-size: 14px; line-height: 1.6;">{summary}</p>' if summary else ''}
                         </div>
                     </div>
-                </div>
-        """
+            """
+            global_idx += 1
+        
+        html_content += "</div>"
     
     html_content += """
             </div>
@@ -387,7 +492,7 @@ def send_email(subject, html_content):
 def main():
     """主函数"""
     logger.info("=" * 50)
-    logger.info("AI 前沿新闻推送智能体启动")
+    logger.info("每日前沿资讯推送智能体启动")
     logger.info("=" * 50)
     
     try:
@@ -411,7 +516,7 @@ def main():
         selected_news = sort_and_limit(unique_news)
         
         today_str = datetime.now().strftime("%Y-%m-%d")
-        subject = f"🤖 AI 前沿日报 | {today_str} | 精选 {len(selected_news)} 条"
+        subject = f"📰 每日前沿资讯 | {today_str} | 精选 {len(selected_news)} 条"
         html_content = build_html_email(selected_news, today_str)
         
         if send_email(subject, html_content):
