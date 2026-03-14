@@ -1,0 +1,33 @@
+# 环境变量文件（包含敏感信息）
+.env
+
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+
+# 本地历史记录（由程序自动生成）
+# history.json 需要提交到仓库以记录已发送文章
+# 但如果您不想提交，可以取消下面这行的注释
+# history.json
