@@ -2,53 +2,65 @@ name: Daily AI News
 
 on:
   schedule:
-    # 每天 UTC 0:00 运行（北京时间 8:00）
-    - cron: '0 0 * * *'
-  
-  # 允许手动触发
-  workflow_dispatch:
+    - cron: '0 0 * * *' # 每天 UTC 0:00 (北京时间 8:00)
+  workflow_dispatch: # 允许手动触发
+
+# 🔴 关键修复 1: 显式授予写入仓库内容的权限
+permissions:
+  contents: write
 
 jobs:
   send-ai-news:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        
-    - name: Cache pip packages
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    
-    - name: Run AI News Agent
-      env:
-        SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-        SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-        RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
-        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-        SMTP_PORT: ${{ secrets.SMTP_PORT }}
-      run: python main.py
-    
-    - name: Commit and push history.json
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add history.json
-        # 只在文件有变化时提交
-        git diff --staged --quiet || git commit -m "Update news history - $(date +'%Y-%m-%d')"
-        git push
-      continue-on-error: true
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run AI News Agent
+        env:
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        run: python main.py
+
+      # 🔴 关键修复 2: 使用正确的 Token 认证进行 Git 推送
+      - name: Commit and push history.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add history.json
+          # 如果没有变化，commit 会失败，这里用 || true 忽略该错误，避免中断流程
+          git commit -m "Auto update news history" || echo "No changes to commit"
+          # 使用 Token 构造 HTTPS 地址进行推送
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:main
+
+      # 清理步骤（可选，保持环境整洁）
+      - name: Post Cache pip packages
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
