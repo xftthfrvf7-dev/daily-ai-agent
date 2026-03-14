@@ -15,15 +15,18 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        # ✅ 升级至 v5 (支持 Node.js 24)
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        # ✅ 升级至 v6 (支持 Node.js 24)
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        # ✅ 升级至 v5 (支持 Node.js 24)
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -60,7 +63,8 @@ jobs:
       # 清理步骤（可选，保持环境整洁）
       - name: Post Cache pip packages
         if: always()
-        uses: actions/cache@v4
+        # ✅ 升级至 v5 (支持 Node.js 24)
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
