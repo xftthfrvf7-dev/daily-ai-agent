@@ -37,27 +37,22 @@ HOURS_LIMIT = 24
 RSS_SOURCES = {
     "leiphone": {
         "name": "雷锋网",
-        # 雷锋网 AI 板块
         "url": "https://www.leiphone.com/feed"
     },
     "36kr_ai": {
         "name": "36氪",
-        # 36氪科技资讯
         "url": "https://36kr.com/feed"
     },
     "solidot": {
         "name": "Solidot",
-        # Solidot 科技资讯
         "url": "https://www.solidot.org/index.rss"
     },
     "ifanr": {
         "name": "爱范儿",
-        # 爱范儿科技媒体
         "url": "https://www.ifanr.com/feed"
     },
     "sspai": {
         "name": "少数派",
-        # 少数派科技媒体
         "url": "https://sspai.com/feed"
     }
 }
@@ -90,13 +85,12 @@ def parse_datetime(date_string):
     if not date_string:
         return None
     
-    # 尝试多种时间格式
     formats = [
-        "%a, %d %b %Y %H:%M:%S %Z",      # RSS 标准格式
-        "%a, %d %b %Y %H:%M:%S %z",      # 带时区偏移
-        "%Y-%m-%dT%H:%M:%S.%fZ",          # ISO 8601
-        "%Y-%m-%dT%H:%M:%SZ",             # ISO 8601 无毫秒
-        "%Y-%m-%d %H:%M:%S",              # 简单格式
+        "%a, %d %b %Y %H:%M:%S %Z",
+        "%a, %d %b %Y %H:%M:%S %z",
+        "%Y-%m-%dT%H:%M:%S.%fZ",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%d %H:%M:%S",
     ]
     
     for fmt in formats:
@@ -105,7 +99,6 @@ def parse_datetime(date_string):
         except ValueError:
             continue
     
-    # 尝试 feedparser 解析后的结构
     try:
         if hasattr(date_string, 'tm_year'):
             return datetime(*date_string[:6])
@@ -115,154 +108,9 @@ def parse_datetime(date_string):
     return None
 
 
-def fetch_google_news():
-    """抓取 Google News RSS"""
-    news_list = []
-    
-    for source_key, source_config in RSS_SOURCES.items():
-        if not source_key.startswith("google_news"):
-            continue
-            
-        try:
-            logger.info(f"正在抓取: {source_config['name']}")
-            # 使用 requests 获取内容，可以设置超时
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            response = requests.get(source_config['url'], headers=headers, timeout=15)
-            response.raise_for_status()
-            feed = feedparser.parse(response.content)
-            logger.info(f"  获取到 {len(feed.entries)} 条原始数据")
-            
-            for entry in feed.entries:
-                try:
-                    # 提取发布时间
-                    published = entry.get('published', '')
-                    pub_date = parse_datetime(published)
-                    
-                    if not pub_date:
-                        # 尝试使用 feedparser 解析的 time 属性
-                        if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                            pub_date = datetime(*entry.published_parsed[:6])
-                    
-                    news_item = {
-                        "title": entry.get('title', '无标题'),
-                        "link": entry.get('link', ''),
-                        "published": published,
-                        "pub_date": pub_date,
-                        "source": source_config['name'],
-                        "summary": entry.get('summary', '')[:200] + "..." if len(entry.get('summary', '')) > 200 else entry.get('summary', '')
-                    }
-                    news_list.append(news_item)
-                    
-                except Exception as e:
-                    logger.warning(f"解析单条新闻失败: {e}")
-                    continue
-                    
-        except Exception as e:
-            logger.error(f"抓取 {source_config['name']} 失败: {e}")
-            continue
-    
-    return news_list
-
-
-def fetch_hackernews():
-    """抓取 Hacker News 热门 AI 相关文章"""
-    news_list = []
-    
-    try:
-        source_config = RSS_SOURCES["hackernews"]
-        logger.info(f"正在抓取: {source_config['name']}")
-        
-        response = requests.get(source_config['url'], timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        
-        for hit in data.get('hits', []):
-            try:
-                # HN 返回的是时间戳（秒）
-                created_at = hit.get('created_at', '')
-                pub_date = None
-                
-                if created_at:
-                    try:
-                        pub_date = datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%S.%fZ")
-                    except ValueError:
-                        try:
-                            pub_date = datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%SZ")
-                        except ValueError:
-                            pass
-                
-                news_item = {
-                    "title": hit.get('title', '无标题'),
-                    "link": hit.get('url') or f"https://news.ycombinator.com/item?id={hit.get('objectID')}",
-                    "published": created_at,
-                    "pub_date": pub_date,
-                    "source": f"Hacker News (Points: {hit.get('points', 0)})",
-                    "summary": f"评论数: {hit.get('num_comments', 0)} | 作者: {hit.get('author', 'unknown')}"
-                }
-                news_list.append(news_item)
-                
-            except Exception as e:
-                logger.warning(f"解析 HN 单条新闻失败: {e}")
-                continue
-                
-    except Exception as e:
-        logger.error(f"抓取 Hacker News 失败: {e}")
-    
-    return news_list
-
-
-def fetch_reddit():
-    """抓取 Reddit AI 板块"""
-    news_list = []
-    
-    try:
-        source_config = RSS_SOURCES["reddit_ai"]
-        logger.info(f"正在抓取: {source_config['name']}")
-        
-        # 使用 requests 获取内容，可以设置超时和 User-Agent
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = requests.get(source_config['url'], headers=headers, timeout=15)
-        response.raise_for_status()
-        feed = feedparser.parse(response.content)
-        logger.info(f"  获取到 {len(feed.entries)} 条原始数据")
-        
-        for entry in feed.entries:
-            try:
-                published = entry.get('published', '')
-                pub_date = parse_datetime(published)
-                
-                if not pub_date and hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    pub_date = datetime(*entry.published_parsed[:6])
-                
-                news_item = {
-                    "title": entry.get('title', '无标题'),
-                    "link": entry.get('link', ''),
-                    "published": published,
-                    "pub_date": pub_date,
-                    "source": source_config['name'],
-                    "summary": ""
-                }
-                news_list.append(news_item)
-                
-            except Exception as e:
-                logger.warning(f"解析 Reddit 单条新闻失败: {e}")
-                continue
-                
-    except Exception as e:
-        logger.error(f"抓取 Reddit 失败: {e}")
-    
-    return news_list
-
-
 def fetch_chinese_tech_media():
     """抓取中文科技媒体 RSS"""
     news_list = []
-    
-    # 中文媒体源列表
     chinese_sources = ['leiphone', '36kr_ai', 'solidot', 'ifanr', 'sspai']
     
     for source_key in chinese_sources:
@@ -289,9 +137,7 @@ def fetch_chinese_tech_media():
                     if not pub_date and hasattr(entry, 'published_parsed') and entry.published_parsed:
                         pub_date = datetime(*entry.published_parsed[:6])
                     
-                    # 提取摘要，清理 HTML 标签
                     summary = entry.get('summary', '')
-                    # 简单清理 HTML 标签
                     import re
                     summary = re.sub(r'<[^>]+>', '', summary)
                     summary = summary[:200] + "..." if len(summary) > 200 else summary
@@ -320,10 +166,7 @@ def fetch_chinese_tech_media():
 def fetch_all_news():
     """从所有源抓取新闻"""
     all_news = []
-    
-    # 抓取中文科技媒体（包括少数派）
     all_news.extend(fetch_chinese_tech_media())
-    
     logger.info(f"共抓取到 {len(all_news)} 条原始新闻")
     return all_news
 
@@ -340,14 +183,11 @@ def filter_recent_news(news_list, hours=HOURS_LIMIT):
     for news in news_list:
         pub_date = news.get('pub_date')
         if pub_date:
-            # 将发布时间转换为本地时间进行比较
             try:
                 if pub_date.tzinfo is None:
-                    # 无时区信息，假设为 UTC 或本地时间
                     if pub_date > cutoff_time:
                         recent_news.append(news)
                 else:
-                    # 有时区信息，转换为本地时间
                     pub_date_local = pub_date.replace(tzinfo=None)
                     if pub_date_local > cutoff_time:
                         recent_news.append(news)
@@ -381,24 +221,15 @@ def sort_and_limit(news_list, limit=MAX_NEWS_COUNT):
     if not news_list:
         return []
     
-    # 处理时间，统一转换为 offset-naive 时间用于比较
     def get_sort_key(news):
         pub_date = news.get('pub_date')
         if not pub_date:
             return datetime.min
-        # 如果带时区信息，转换为本地时间（去掉时区）
         if pub_date.tzinfo is not None:
             return pub_date.replace(tzinfo=None)
         return pub_date
     
-    # 按发布时间倒序排序（最新的在前）
-    sorted_news = sorted(
-        news_list,
-        key=get_sort_key,
-        reverse=True
-    )
-    
-    # 限制数量
+    sorted_news = sorted(news_list, key=get_sort_key, reverse=True)
     limited_news = sorted_news[:limit]
     logger.info(f"精选 {len(limited_news)} 条新闻")
     
@@ -415,18 +246,14 @@ def build_html_email(news_list, date_str):
     <html>
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>AI 前沿日报</title>
     </head>
     <body style="margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
         <div style="max-width: 680px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden;">
-            <!-- 头部 -->
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 32px 24px; text-align: center;">
                 <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">🤖 AI 前沿日报</h1>
                 <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">{date_str} | 精选 {len(news_list)} 条</p>
             </div>
-            
-            <!-- 新闻列表 -->
             <div style="padding: 24px;">
     """
     
@@ -436,12 +263,8 @@ def build_html_email(news_list, date_str):
         source = news.get('source', '未知来源')
         summary = news.get('summary', '')
         
-        # 格式化发布时间
         pub_date = news.get('pub_date')
-        if pub_date:
-            time_str = pub_date.strftime("%m月%d日 %H:%M")
-        else:
-            time_str = "未知时间"
+        time_str = pub_date.strftime("%m月%d日 %H:%M") if pub_date else "未知时间"
         
         html_content += f"""
                 <div style="background-color: #fafbfc; border-radius: 8px; padding: 20px; margin-bottom: 16px; border-left: 4px solid #667eea;">
@@ -464,12 +287,9 @@ def build_html_email(news_list, date_str):
     
     html_content += """
             </div>
-            
-            <!-- 底部 -->
             <div style="background-color: #f8f9fa; padding: 20px 24px; text-align: center; border-top: 1px solid #e8e8e8;">
                 <p style="margin: 0; color: #999; font-size: 12px; line-height: 1.6;">
-                    本邮件由 AI 新闻推送智能体自动生成<br>
-                    如需取消订阅，请修改 GitHub Actions 配置
+                    本邮件由 AI 新闻推送智能体自动生成
                 </p>
             </div>
         </div>
@@ -482,21 +302,48 @@ def build_html_email(news_list, date_str):
 
 def send_email(subject, html_content):
     """发送邮件"""
-    # 读取环境变量
+    # 1. 读取环境变量
     sender_email = os.getenv('SENDER_EMAIL')
     sender_password = os.getenv('SENDER_PASSWORD')
-    receiver_emails = os.getenv('RECEIVER_EMAIL', '').split(',')
-    smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    receiver_emails_str = os.getenv('RECEIVER_EMAIL', '')
+    # 修改默认值为 iCloud 服务器
+    smtp_server = os.getenv('SMTP_SERVER', 'smtp.mail.me.com')
+    smtp_port_str = os.getenv('SMTP_PORT', '587')
     
-    # 验证配置
-    if not all([sender_email, sender_password, receiver_emails[0]]):
-        logger.error("邮件配置不完整，请检查 .env 文件")
+    try:
+        smtp_port = int(smtp_port_str)
+    except ValueError:
+        logger.error(f"SMTP_PORT 格式错误: {smtp_port_str}")
+        smtp_port = 587
+
+    # 2. 【新增】详细调试日志：打印配置状态
+    logger.info("--- 📧 邮件配置检查 ---")
+    logger.info(f"SENDER_EMAIL: {'✅ 已设置' if sender_email else '❌ 缺失'}")
+    logger.info(f"SENDER_PASSWORD: {'✅ 已设置' if sender_password else '❌ 缺失'}")
+    logger.info(f"RECEIVER_EMAIL 原始值: '{receiver_emails_str}'")
+    logger.info(f"SMTP_SERVER: {smtp_server}")
+    logger.info(f"SMTP_PORT: {smtp_port}")
+    
+    # 处理收件人列表
+    receiver_emails = []
+    if receiver_emails_str:
+        receiver_emails = [email.strip() for email in receiver_emails_str.split(',') if email.strip()]
+    
+    logger.info(f"解析后的收件人列表: {receiver_emails}")
+
+    # 3. 验证配置
+    if not sender_email:
+        logger.error("❌ 失败原因: SENDER_EMAIL 未设置")
+        return False
+    if not sender_password:
+        logger.error("❌ 失败原因: SENDER_PASSWORD 未设置")
+        return False
+    if not receiver_emails:
+        logger.error("❌ 失败原因: RECEIVER_EMAIL 未设置或为空 (请检查 GitHub Secrets)")
         return False
     
-    # 清理收件人邮箱（去除空格）
-    receiver_emails = [email.strip() for email in receiver_emails if email.strip()]
-    
+    logger.info("✅ 配置检查通过，开始发送...")
+
     try:
         # 创建邮件
         msg = MIMEMultipart('alternative')
@@ -504,30 +351,36 @@ def send_email(subject, html_content):
         msg['From'] = sender_email
         msg['To'] = ', '.join(receiver_emails)
         
-        # 添加 HTML 内容
         html_part = MIMEText(html_content, 'html', 'utf-8')
         msg.attach(html_part)
         
-        # 连接 SMTP 服务器并发送
-        logger.info(f"正在连接 SMTP 服务器: {smtp_server}:{smtp_port}")
+        # 连接 SMTP
+        logger.info(f"正在连接 SMTP: {smtp_server}:{smtp_port}")
         
         with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
-            server.starttls()  # 启用 TLS 加密
+            server.set_debuglevel(1)  # 开启调试模式，查看交互细节
+            server.starttls()
+            logger.info("TLS 加密已启用")
+            
+            logger.info(f"正在登录: {sender_email}")
             server.login(sender_email, sender_password)
+            
+            logger.info(f"正在发送邮件给: {receiver_emails}")
             server.sendmail(sender_email, receiver_emails, msg.as_string())
         
-        logger.info(f"邮件发送成功！收件人: {', '.join(receiver_emails)}")
+        logger.info("✅ 邮件发送成功！")
         return True
         
     except smtplib.SMTPAuthenticationError as e:
-        logger.error(f"邮箱认证失败: {e}")
-        logger.error("请检查邮箱地址和授权码是否正确")
+        logger.error(f"❌ 认证失败 (SMTPAuthenticationError): {e}")
+        logger.error("💡 提示：请确认使用的是 Apple ID 的【应用专用密码】，而非登录密码。")
         return False
-    except smtplib.SMTPException as e:
-        logger.error(f"SMTP 错误: {e}")
+    except smtplib.SMTPConnectError as e:
+        logger.error(f"❌ 连接失败 (SMTPConnectError): {e}")
+        logger.error(f"💡 提示：检查 SMTP_SERVER ({smtp_server}) 和 PORT ({smtp_port}) 是否正确。")
         return False
     except Exception as e:
-        logger.error(f"发送邮件失败: {e}")
+        logger.error(f"❌ 发送过程中发生未知错误: {e}", exc_info=True)
         return False
 
 
@@ -538,49 +391,37 @@ def main():
     logger.info("=" * 50)
     
     try:
-        # 1. 加载历史记录
         history = load_history()
-        
-        # 2. 抓取所有新闻
         all_news = fetch_all_news()
         
         if not all_news:
             logger.warning("未抓取到任何新闻")
             return
         
-        # 3. 过滤最近 24 小时的新闻
         recent_news = filter_recent_news(all_news)
-        
         if not recent_news:
             logger.info("过去 24 小时内没有新新闻")
             return
         
-        # 4. 去重
         unique_news = remove_duplicates(recent_news, history)
-        
         if not unique_news:
             logger.info("所有新闻都已发送过，今日无新内容")
             return
         
-        # 5. 排序并限制数量
         selected_news = sort_and_limit(unique_news)
         
-        # 6. 构建邮件
         today_str = datetime.now().strftime("%Y-%m-%d")
         subject = f"🤖 AI 前沿日报 | {today_str} | 精选 {len(selected_news)} 条"
         html_content = build_html_email(selected_news, today_str)
         
-        # 7. 发送邮件
         if send_email(subject, html_content):
-            # 8. 更新历史记录
             new_urls = [news['link'] for news in selected_news if news.get('link')]
             history['sent_urls'].extend(new_urls)
-            # 只保留最近 1000 条记录，防止文件过大
             history['sent_urls'] = history['sent_urls'][-1000:]
             save_history(history)
-            logger.info("任务完成！")
+            logger.info("🎉 任务完成！")
         else:
-            logger.error("邮件发送失败，历史记录未更新")
+            logger.error("💥 邮件发送失败，历史记录未更新")
             
     except Exception as e:
         logger.error(f"程序运行出错: {e}", exc_info=True)
